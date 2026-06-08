@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "controller": {
+      "type": "object",
+      "properties": {
+        "cloudProvider": {
+          "type": "string",
+          "enum": ["vultr"]
+        },
+        "repairAction": {
+          "type": "string",
+          "enum": ["reboot", "replace"]
+        },
+        "scanInterval": {
+          "type": "string",
+          "pattern": "^[0-9]+(ns|us|ms|s|m|h)$"
+        },
+        "unhealthyDuration": {
+          "type": "string",
+          "pattern": "^[0-9]+(ns|us|ms|s|m|h)$"
+        },
+        "drainTimeout": {
+          "type": "string",
+          "pattern": "^[0-9]+(ns|us|ms|s|m|h)$"
+        },
+        "rebootReadyTimeout": {
+          "type": "string",
+          "pattern": "^[0-9]+(ns|us|ms|s|m|h)$"
+        },
+        "healthAddr": {
+          "type": "string"
+        },
+        "cordonBeforeRepair": {
+          "type": "boolean"
+        },
+        "drainBeforeRepair": {
+          "type": "boolean"
+        },
+        "uncordonAfterReboot": {
+          "type": "boolean"
+        },
+        "deleteEmptyDirData": {
+          "type": "boolean"
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "logVerbosity": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        },
+        "tag": {
+          "type": "string"
+        }
+      }
+    },
+    "vultr": {
+      "type": "object",
+      "properties": {
+        "apiKey": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "apiKeySecretKey": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

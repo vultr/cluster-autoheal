@@ -1,0 +1,10 @@
+.git
+.github
+charts/*/charts
+charts/*/tmpcharts
+coverage.out
+dist
+tmp
+*.test
+Dockerfile
+README.md

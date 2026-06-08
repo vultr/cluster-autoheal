@@ -1,0 +1,17 @@
+apiVersion: v2
+name: cluster-autoheal
+description: Cloud-agnostic Kubernetes node auto-healing controller
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+keywords:
+  - kubernetes
+  - autoheal
+  - nodes
+  - vultr
+home: https://github.com/vultr/cluster-autoheal
+sources:
+  - https://github.com/vultr/cluster-autoheal
+maintainers:
+  - name: Vultr
+    url: https://github.com/vultr

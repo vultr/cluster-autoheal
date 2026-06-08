@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cluster-autoheal.fullname" . }}
+  labels:
+    {{- include "cluster-autoheal.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cluster-autoheal.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cluster-autoheal.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "cluster-autoheal.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ include "cluster-autoheal.name" . }}
+          image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --cloud-provider={{ .Values.controller.cloudProvider }}
+            - --repair-action={{ .Values.controller.repairAction }}
+            - --scan-interval={{ .Values.controller.scanInterval }}
+            - --unhealthy-duration={{ .Values.controller.unhealthyDuration }}
+            - --drain-timeout={{ .Values.controller.drainTimeout }}
+            - --reboot-ready-timeout={{ .Values.controller.rebootReadyTimeout }}
+            - --health-addr={{ .Values.controller.healthAddr }}
+            - --cordon-before-repair={{ .Values.controller.cordonBeforeRepair }}
+            - --drain-before-repair={{ .Values.controller.drainBeforeRepair }}
+            - --uncordon-after-reboot={{ .Values.controller.uncordonAfterReboot }}
+            - --delete-emptydir-data={{ .Values.controller.deleteEmptyDirData }}
+            - -v={{ .Values.controller.logVerbosity }}
+            {{- if .Values.controller.dryRun }}
+            - --dry-run
+            {{- end }}
+          {{- if or .Values.vultr.apiKey .Values.vultr.existingSecret }}
+          env:
+            - name: VULTR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cluster-autoheal.vultrSecretName" . }}
+                  key: {{ .Values.vultr.apiKeySecretKey }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

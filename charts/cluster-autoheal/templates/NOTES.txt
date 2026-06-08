@@ -1,0 +1,9 @@
+cluster-autoheal has been installed.
+
+If using the Vultr provider, set VULTR_API_KEY with either:
+
+  --set vultr.apiKey=...
+
+or create a secret and install with:
+
+  --set vultr.existingSecret=<secret-name>
