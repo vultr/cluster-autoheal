@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/vultr/govultr/v3 v3.20.0
-	golang.org/x/oauth2 v0.21.0
+	golang.org/x/oauth2 v0.27.0
 	k8s.io/api v0.31.3
 	k8s.io/apimachinery v0.31.3
 	k8s.io/client-go v0.31.3
