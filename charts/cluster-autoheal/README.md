@@ -2,6 +2,8 @@
 
 Install `cluster-autoheal` into a Kubernetes cluster.
 
+By default, the chart runs `vultr/cluster-autoheal` using the chart `appVersion` as the image tag. Override `image.tag` to deploy a different release.
+
 ## Vultr Secret
 
 Recommended:
@@ -18,9 +20,21 @@ helm install cluster-autoheal ./charts/cluster-autoheal \
   --set vultr.existingSecret=cluster-autoheal-vultr
 ```
 
+Install a specific image tag:
+
+```sh
+helm upgrade --install cluster-autoheal ./charts/cluster-autoheal \
+  --namespace kube-system \
+  --set vultr.existingSecret=cluster-autoheal-vultr \
+  --set image.tag=v0.1.0
+```
+
 ## Important Values
 
 - `controller.cloudProvider`: provider name. Defaults to `vultr`.
+- `image.repository`: controller image repository. Defaults to `vultr/cluster-autoheal`.
+- `image.tag`: controller image tag. Defaults to the chart `appVersion`.
+- `image.pullPolicy`: image pull policy. Defaults to `IfNotPresent`.
 - `controller.actionOverrideLabel`: node label that overrides matched repair action.
 - `controller.leaderElect`: enables Kubernetes leader election. Defaults to `true`.
 - `controller.leaderElectionNamespace`: namespace for the leader election Lease.

@@ -1,5 +1,9 @@
 cluster-autoheal has been installed.
 
+Image:
+
+  {{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}
+
 If using the Vultr provider, set VULTR_API_KEY with either:
 
   --set vultr.apiKey=...

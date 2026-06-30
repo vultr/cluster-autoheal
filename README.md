@@ -47,6 +47,8 @@ helm install cluster-autoheal ./charts/cluster-autoheal \
   --set vultr.existingSecret=cluster-autoheal-vultr
 ```
 
+The chart defaults to `vultr/cluster-autoheal` and uses the chart `appVersion` as the image tag. Override `image.tag` for a specific release.
+
 For a safe first run, enable dry-run mode:
 
 ```sh
@@ -167,7 +169,7 @@ make helm-template
 make image TAG=dev
 ```
 
-GitHub Actions run Go formatting, vet, tests, binary build, Helm lint/template, and Docker image builds. Images are published to `ghcr.io/vultr/cluster-autoheal` on pushes to `main` and version tags.
+GitHub Actions run Go formatting, vet, tests, binary build, Helm lint/template, and Docker image builds. Releases publish images to `vultr/cluster-autoheal` through GoReleaser.
 
 ## Provider Contract
 

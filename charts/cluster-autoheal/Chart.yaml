@@ -3,7 +3,7 @@ name: cluster-autoheal
 description: Cloud-agnostic Kubernetes node auto-healing controller
 type: application
 version: 0.1.0
-appVersion: 0.1.0
+appVersion: v0.1.0
 keywords:
   - kubernetes
   - autoheal
