@@ -53,6 +53,7 @@ dockers_v2:
     platforms:
       - linux/amd64
       - linux/arm64
+    sbom: false
     labels:
       org.opencontainers.image.title: cluster-autoheal
       org.opencontainers.image.description: Kubernetes node autoheal controller
