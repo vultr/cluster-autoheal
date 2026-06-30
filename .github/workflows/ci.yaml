@@ -61,6 +61,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -68,14 +74,13 @@ jobs:
         id: build-meta
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+      - name: Build Linux binary
+        run: make build-linux VERSION=ci COMMIT=${{ github.sha }} DATE=${{ steps.build-meta.outputs.date }}
+
       - name: Build image
         uses: docker/build-push-action@v7
         with:
           context: .
           push: false
           platforms: linux/amd64
-          build-args: |
-            VERSION=ci
-            COMMIT=${{ github.sha }}
-            DATE=${{ steps.build-meta.outputs.date }}
           tags: ghcr.io/vultr/cluster-autoheal:ci

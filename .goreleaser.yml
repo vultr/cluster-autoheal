@@ -1,0 +1,61 @@
+version: 2
+
+project_name: cluster-autoheal
+
+builds:
+  - id: cluster-autoheal
+    main: ./cmd/cluster-autoheal
+    binary: cluster-autoheal
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .Date }}
+
+archives:
+  - id: cluster-autoheal
+    ids:
+      - cluster-autoheal
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats:
+      - tar.gz
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+dockers_v2:
+  - id: cluster-autoheal
+    ids:
+      - cluster-autoheal
+    dockerfile: Dockerfile.goreleaser
+    images:
+      - vultr/cluster-autoheal
+    tags:
+      - "{{ .Tag }}"
+      - release
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: cluster-autoheal
+      org.opencontainers.image.description: Kubernetes node autoheal controller
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"

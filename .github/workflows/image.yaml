@@ -1,72 +1,24 @@
-name: image
+name: release
 
 on:
   push:
     branches:
       - main
-    tags:
-      - v*
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  publish:
-    name: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Set build metadata
-        id: build-meta
-        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/vultr/cluster-autoheal
-          tags: |
-            type=ref,event=branch
-            type=ref,event=tag
-            type=sha,prefix=sha-
-
-      - name: Build Linux binaries
-        run: |
-          mkdir -p bin
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${{ github.ref_name }} -X main.commit=${{ github.sha }} -X main.date=${{ steps.build-meta.outputs.date }}" -o bin/cluster-autoheal-linux-amd64 ./cmd/cluster-autoheal
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=${{ github.ref_name }} -X main.commit=${{ github.sha }} -X main.date=${{ steps.build-meta.outputs.date }}" -o bin/cluster-autoheal-linux-arm64 ./cmd/cluster-autoheal
-
-      - name: Build and publish image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ steps.meta.outputs.tags }}
-          build-args: |
-            VERSION=${{ github.ref_name }}
-            COMMIT=${{ github.sha }}
-            DATE=${{ steps.build-meta.outputs.date }}
+  release:
+    name: goreleaser
+    uses: vultr/shared-actions/.github/workflows/go-releaser.yml@main
+    with:
+      go_version: "1.26.0"
+    secrets:
+      gh_token: ${{ secrets.GITHUB_TOKEN }}
+      docker_user: ${{ secrets.DOCKER_USERNAME }}
+      docker_pass: ${{ secrets.DOCKER_PASSWORD }}

@@ -1,0 +1,5 @@
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/cluster-autoheal /cluster-autoheal
+USER 65532:65532
+ENTRYPOINT ["/cluster-autoheal"]
