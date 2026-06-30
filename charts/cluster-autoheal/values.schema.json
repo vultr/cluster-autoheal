@@ -13,15 +13,22 @@
           "type": "string",
           "enum": ["vultr"]
         },
-        "repairAction": {
+        "actionOverrideLabel": {
           "type": "string",
-          "enum": ["reboot", "replace"]
+          "minLength": 1
+        },
+        "leaderElect": {
+          "type": "boolean"
+        },
+        "leaderElectionNamespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "leaderElectionName": {
+          "type": "string",
+          "minLength": 1
         },
         "scanInterval": {
-          "type": "string",
-          "pattern": "^[0-9]+(ns|us|ms|s|m|h)$"
-        },
-        "unhealthyDuration": {
           "type": "string",
           "pattern": "^[0-9]+(ns|us|ms|s|m|h)$"
         },
@@ -72,6 +79,10 @@
         }
       }
     },
+    "dnsPolicy": {
+      "type": "string",
+      "enum": ["ClusterFirst", "Default", "None"]
+    },
     "vultr": {
       "type": "object",
       "properties": {
@@ -84,6 +95,56 @@
         "apiKeySecretKey": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "repairPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxUnhealthyNodeThresholdCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxUnhealthyNodeThresholdPercentage": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "maxParallelNodesRepairedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxParallelNodesRepairedPercentage": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["condition", "minRepairWait", "action"],
+            "properties": {
+              "condition": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string"
+              },
+              "minRepairWait": {
+                "type": "string",
+                "pattern": "^[0-9]+(ns|us|ms|s|m|h)$"
+              },
+              "action": {
+                "type": "string",
+                "enum": ["reboot", "replace", "none"]
+              }
+            }
+          }
         }
       }
     }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +16,10 @@ import (
 	"github.com/vultr/cluster-autoheal/internal/config"
 	"github.com/vultr/cluster-autoheal/internal/controller"
 	"github.com/vultr/cluster-autoheal/internal/kube"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
 )
 
@@ -29,13 +34,16 @@ func main() {
 
 	cfg := config.Default()
 	flag.StringVar(&cfg.CloudProvider, "cloud-provider", cfg.CloudProvider, "Cloud provider implementation to use.")
+	flag.StringVar(&cfg.ConfigFile, "config-file", cfg.ConfigFile, "Path to repair policy YAML. Empty uses built-in defaults.")
 	flag.StringVar(&cfg.Kubeconfig, "kubeconfig", cfg.Kubeconfig, "Path to kubeconfig. Empty uses in-cluster config.")
 	flag.StringVar(&cfg.HealthAddr, "health-addr", cfg.HealthAddr, "Address for health and readiness endpoints.")
+	flag.StringVar(&cfg.ActionOverrideLabel, "action-override-label", cfg.ActionOverrideLabel, "Node label that overrides matched repair action. Value must be reboot, replace, or none.")
+	flag.BoolVar(&cfg.EnableLeaderElection, "leader-elect", cfg.EnableLeaderElection, "Use Kubernetes leader election before running repairs.")
+	flag.StringVar(&cfg.LeaderElectionNamespace, "leader-election-namespace", cfg.LeaderElectionNamespace, "Namespace for the leader election Lease.")
+	flag.StringVar(&cfg.LeaderElectionName, "leader-election-name", cfg.LeaderElectionName, "Name of the leader election Lease.")
 	flag.DurationVar(&cfg.ScanInterval, "scan-interval", cfg.ScanInterval, "How often to scan node health.")
-	flag.DurationVar(&cfg.UnhealthyDuration, "unhealthy-duration", cfg.UnhealthyDuration, "How long a node must stay unhealthy before remediation.")
 	flag.DurationVar(&cfg.DrainTimeout, "drain-timeout", cfg.DrainTimeout, "Maximum time to wait for pods to drain from a node.")
 	flag.DurationVar(&cfg.RebootReadyTimeout, "reboot-ready-timeout", cfg.RebootReadyTimeout, "Maximum time to track a rebooted node for automatic uncordon.")
-	flag.StringVar(&cfg.RepairAction, "repair-action", cfg.RepairAction, "Repair action to request from the cloud provider: reboot or replace.")
 	flag.BoolVar(&cfg.CordonBeforeRepair, "cordon-before-repair", cfg.CordonBeforeRepair, "Cordon nodes before requesting repair.")
 	flag.BoolVar(&cfg.DrainBeforeRepair, "drain-before-repair", cfg.DrainBeforeRepair, "Drain pods from nodes before requesting repair.")
 	flag.BoolVar(&cfg.UncordonAfterReboot, "uncordon-after-reboot", cfg.UncordonAfterReboot, "Uncordon controller-cordoned nodes after reboot repair returns Ready.")
@@ -46,6 +54,13 @@ func main() {
 	if *showVersion {
 		fmt.Printf("cluster-autoheal version=%s commit=%s date=%s\n", version, commit, date)
 		return
+	}
+	if cfg.ConfigFile != "" {
+		policy, err := config.LoadRepairRuleFile(cfg.ConfigFile)
+		if err != nil {
+			klog.Fatalf("failed to load repair policy: %v", err)
+		}
+		config.ApplyRepairRuleFile(&cfg, policy)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -62,10 +77,68 @@ func main() {
 		klog.Fatalf("failed to build cloud provider: %v", err)
 	}
 
-	c := controller.New(client, provider, cfg)
-	if err := c.Run(ctx); err != nil {
-		klog.Fatalf("controller stopped with error: %v", err)
+	run := func(runCtx context.Context) {
+		c := controller.New(client, provider, cfg)
+		if err := c.Run(runCtx); err != nil {
+			klog.Fatalf("controller stopped with error: %v", err)
+		}
 	}
+	if cfg.EnableLeaderElection {
+		runWithLeaderElection(ctx, client, cfg, run)
+		return
+	}
+	run(ctx)
+}
+
+func runWithLeaderElection(ctx context.Context, client kubernetes.Interface, cfg config.Config, run func(context.Context)) {
+	identity := os.Getenv("POD_NAME")
+	if identity == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			klog.Fatalf("failed to get hostname for leader election identity: %v", err)
+		}
+		identity = hostname
+	}
+	identity = strings.TrimSpace(identity)
+	if identity == "" {
+		klog.Fatal("leader election identity must not be empty")
+	}
+
+	lock := &resourcelock.LeaseLock{
+		LeaseMeta: metav1.ObjectMeta{
+			Name:      cfg.LeaderElectionName,
+			Namespace: cfg.LeaderElectionNamespace,
+		},
+		Client: client.CoordinationV1(),
+		LockConfig: resourcelock.ResourceLockConfig{
+			Identity: identity,
+		},
+	}
+
+	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		ReleaseOnCancel: true,
+		LeaseDuration:   30 * time.Second,
+		RenewDeadline:   20 * time.Second,
+		RetryPeriod:     5 * time.Second,
+		Name:            cfg.LeaderElectionName,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(ctx context.Context) {
+				klog.Infof("became leader as %s", identity)
+				run(ctx)
+			},
+			OnStoppedLeading: func() {
+				klog.Fatalf("leader election lost by %s", identity)
+			},
+			OnNewLeader: func(currentIdentity string) {
+				if currentIdentity == identity {
+					return
+				}
+				klog.Infof("new leader elected: %s", currentIdentity)
+			},
+		},
+		WatchDog: leaderelection.NewLeaderHealthzAdaptor(20 * time.Second),
+	})
 }
 
 func runHealthServer(ctx context.Context, addr string) {

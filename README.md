@@ -23,9 +23,8 @@ export VULTR_API_KEY=...
 go run ./cmd/cluster-autoheal \
   --kubeconfig ~/.kube/config \
   --cloud-provider vultr \
+  --config-file ./repair-policy.yaml \
   --health-addr :8080 \
-  --repair-action reboot \
-  --unhealthy-duration 10m \
   --scan-interval 30s \
   --dry-run
 ```
@@ -60,22 +59,83 @@ helm upgrade --install cluster-autoheal ./charts/cluster-autoheal \
 ## Flags
 
 - `--cloud-provider`: provider implementation to use. Defaults to `vultr`.
+- `--config-file`: optional repair policy YAML. Empty uses the built-in default policy.
 - `--kubeconfig`: path to a kubeconfig. Empty uses in-cluster config.
 - `--health-addr`: address for `/healthz`, `/readyz`, and `/version`. Defaults to `:8080`.
+- `--action-override-label`: node label that overrides matched repair action. Defaults to `cluster-autoheal.vultr.com/repair-action`.
+- `--leader-elect`: use Kubernetes leader election before running repairs. Defaults to `true`.
+- `--leader-election-namespace`: namespace for the leader election Lease. Defaults to `kube-system`.
+- `--leader-election-name`: name of the leader election Lease. Defaults to `cluster-autoheal`.
 - `--scan-interval`: how often to scan node health. Defaults to `30s`.
-- `--unhealthy-duration`: how long a node must remain unhealthy before repair. Defaults to `10m`.
 - `--drain-timeout`: maximum time to wait for pod evictions during drain. Defaults to `10m`.
 - `--reboot-ready-timeout`: time after which a controller-cordoned reboot is reported as overdue. Defaults to `15m`.
-- `--repair-action`: `reboot` or `replace`. Defaults to `reboot`.
 - `--cordon-before-repair`: cordon nodes before repair. Defaults to `true`.
 - `--drain-before-repair`: evict drainable pods before repair. Defaults to `false`.
 - `--uncordon-after-reboot`: uncordon controller-cordoned rebooted nodes after they return Ready. Defaults to `true`.
 - `--delete-emptydir-data`: allow draining pods that use `emptyDir` volumes. Defaults to `false`.
 - `--dry-run`: log repair decisions without changing cloud resources.
 
+## Repair Policy
+
+The built-in repair policy lets each node condition have its own wait time and repair action.
+
+Default rules:
+
+| Condition | Repair after | Action |
+| --- | --- | --- |
+| `AcceleratedHardwareReady` | `10m` | `reboot` |
+| `ContainerRuntimeReady` | `30m` | `replace` |
+| `KernelReady` | `30m` | `replace` |
+| `NetworkingReady` | `30m` | `replace` |
+| `StorageReady` | `30m` | `replace` |
+| `Ready` | `30m` | `replace` |
+
+Conditions without a rule, such as `DiskPressure` and `MemoryPressure`, do not trigger repair by default.
+
+Example repair policy:
+
+```yaml
+maxUnhealthyNodeThresholdPercentage: 20
+maxParallelNodesRepairedCount: 1
+rules:
+  - condition: AcceleratedHardwareReady
+    reason: NvidiaXID64Error
+    minRepairWait: 5m
+    action: replace
+  - condition: AcceleratedHardwareReady
+    reason: NvidiaXID31Error
+    minRepairWait: 15m
+    action: none
+  - condition: Ready
+    minRepairWait: 30m
+    action: replace
+```
+
+Rule fields:
+
+- `condition`: Kubernetes node condition type.
+- `reason`: optional condition reason. Exact reason matches take precedence over condition-only rules.
+- `minRepairWait`: how long the unhealthy condition/reason must persist before repair.
+- `action`: `replace`, `reboot`, or `none`.
+
+Node label override:
+
+Set `cluster-autoheal.vultr.com/repair-action` on a node to override the action from the matched policy rule. Valid values are `replace`, `reboot`, and `none`.
+
+```sh
+kubectl label node <node-name> cluster-autoheal.vultr.com/repair-action=reboot
+```
+
+Threshold fields:
+
+- `maxUnhealthyNodeThresholdCount`: stop repairs when the number of repair candidates is above this count.
+- `maxUnhealthyNodeThresholdPercentage`: stop repairs when the candidate percentage is above this value.
+- `maxParallelNodesRepairedCount`: maximum nodes repaired per scan.
+- `maxParallelNodesRepairedPercentage`: maximum percentage of repair candidates repaired per scan.
+
 ## Repair Lifecycle
 
-When a node remains unhealthy beyond `--unhealthy-duration`, the controller can prepare it before calling the cloud provider:
+When a matched condition remains unhealthy beyond its rule's `minRepairWait`, the controller can prepare the node before calling the cloud provider:
 
 - Cordon: enabled by default with `--cordon-before-repair=true`.
 - Drain: optional with `--drain-before-repair=true`.
@@ -87,10 +147,11 @@ For reboot repairs, the controller annotates nodes it cordons. When the same nod
 
 ## Production Notes
 
-- Run one replica for now. The controller keeps in-memory repair state and does not yet implement leader election.
+- Run at least two replicas. Leader election ensures only one pod repairs nodes while standby pods can take over if the active pod runs on an impaired node.
 - Prefer `vultr.existingSecret` over putting API keys in Helm values.
 - The Helm chart grants node update permissions for cordon/uncordon and pod eviction permissions for optional drain.
 - The container runs as non-root on a distroless base image with a read-only root filesystem.
+- The Helm chart defaults to `dnsPolicy: Default` so cloud API calls do not depend on cluster DNS during node failures.
 - Start with `controller.dryRun=true` to validate node detection and thresholds before enabling repairs.
 
 ## Development

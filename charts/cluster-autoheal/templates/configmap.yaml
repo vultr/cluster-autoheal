@@ -1,0 +1,24 @@
+{{- if .Values.repairPolicy.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cluster-autoheal.fullname" . }}-config
+  labels:
+    {{- include "cluster-autoheal.labels" . | nindent 4 }}
+data:
+  repair-policy.yaml: |
+    {{- with .Values.repairPolicy.maxUnhealthyNodeThresholdCount }}
+    maxUnhealthyNodeThresholdCount: {{ . }}
+    {{- end }}
+    {{- with .Values.repairPolicy.maxUnhealthyNodeThresholdPercentage }}
+    maxUnhealthyNodeThresholdPercentage: {{ . }}
+    {{- end }}
+    {{- with .Values.repairPolicy.maxParallelNodesRepairedCount }}
+    maxParallelNodesRepairedCount: {{ . }}
+    {{- end }}
+    {{- with .Values.repairPolicy.maxParallelNodesRepairedPercentage }}
+    maxParallelNodesRepairedPercentage: {{ . }}
+    {{- end }}
+    rules:
+      {{- toYaml .Values.repairPolicy.rules | nindent 6 }}
+{{- end }}

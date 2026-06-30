@@ -22,6 +22,7 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "cluster-autoheal.serviceAccountName" . }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -37,9 +38,14 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --cloud-provider={{ .Values.controller.cloudProvider }}
-            - --repair-action={{ .Values.controller.repairAction }}
+            - --action-override-label={{ .Values.controller.actionOverrideLabel }}
+            - --leader-elect={{ .Values.controller.leaderElect }}
+            - --leader-election-namespace={{ .Values.controller.leaderElectionNamespace }}
+            - --leader-election-name={{ .Values.controller.leaderElectionName }}
+            {{- if .Values.repairPolicy.enabled }}
+            - --config-file=/etc/cluster-autoheal/repair-policy.yaml
+            {{- end }}
             - --scan-interval={{ .Values.controller.scanInterval }}
-            - --unhealthy-duration={{ .Values.controller.unhealthyDuration }}
             - --drain-timeout={{ .Values.controller.drainTimeout }}
             - --reboot-ready-timeout={{ .Values.controller.rebootReadyTimeout }}
             - --health-addr={{ .Values.controller.healthAddr }}
@@ -51,14 +57,18 @@ spec:
             {{- if .Values.controller.dryRun }}
             - --dry-run
             {{- end }}
-          {{- if or .Values.vultr.apiKey .Values.vultr.existingSecret }}
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- if or .Values.vultr.apiKey .Values.vultr.existingSecret }}
             - name: VULTR_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "cluster-autoheal.vultrSecretName" . }}
                   key: {{ .Values.vultr.apiKeySecretKey }}
-          {{- end }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -75,6 +85,18 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.repairPolicy.enabled }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cluster-autoheal
+              readOnly: true
+          {{- end }}
+      {{- if .Values.repairPolicy.enabled }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "cluster-autoheal.fullname" . }}-config
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

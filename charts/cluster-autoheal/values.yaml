@@ -1,4 +1,4 @@
-replicaCount: 1
+replicaCount: 2
 
 image:
   repository: ghcr.io/vultr/cluster-autoheal
@@ -11,9 +11,11 @@ fullnameOverride: ""
 
 controller:
   cloudProvider: vultr
-  repairAction: reboot
+  actionOverrideLabel: cluster-autoheal.vultr.com/repair-action
+  leaderElect: true
+  leaderElectionNamespace: kube-system
+  leaderElectionName: cluster-autoheal
   scanInterval: 30s
-  unhealthyDuration: 10m
   drainTimeout: 10m
   rebootReadyTimeout: 15m
   healthAddr: :8080
@@ -23,6 +25,30 @@ controller:
   deleteEmptyDirData: false
   dryRun: false
   logVerbosity: 2
+
+repairPolicy:
+  enabled: true
+  maxUnhealthyNodeThresholdPercentage: 20
+  maxParallelNodesRepairedCount: 1
+  rules:
+    - condition: AcceleratedHardwareReady
+      minRepairWait: 10m
+      action: reboot
+    - condition: ContainerRuntimeReady
+      minRepairWait: 30m
+      action: replace
+    - condition: KernelReady
+      minRepairWait: 30m
+      action: replace
+    - condition: NetworkingReady
+      minRepairWait: 30m
+      action: replace
+    - condition: StorageReady
+      minRepairWait: 30m
+      action: replace
+    - condition: Ready
+      minRepairWait: 30m
+      action: replace
 
 vultr:
   apiKey: ""
@@ -39,6 +65,7 @@ rbac:
 
 podAnnotations: {}
 podLabels: {}
+dnsPolicy: Default
 
 podSecurityContext:
   runAsNonRoot: true

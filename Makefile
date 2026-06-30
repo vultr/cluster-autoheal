@@ -1,6 +1,7 @@
 BINARY ?= cluster-autoheal
 IMAGE ?= ghcr.io/vultr/cluster-autoheal
 TAG ?= dev
+PLATFORM ?= linux/amd64
 VERSION ?= $(TAG)
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || printf unknown)
 DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -9,6 +10,11 @@ DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 build:
 	mkdir -p bin
 	go build -trimpath -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)" -o bin/$(BINARY) ./cmd/cluster-autoheal
+
+.PHONY: build-linux
+build-linux:
+	mkdir -p bin
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)" -o bin/$(BINARY)-linux-amd64 ./cmd/cluster-autoheal
 
 .PHONY: test
 test:
@@ -30,11 +36,17 @@ fmt-check:
 lint: fmt-check vet
 
 .PHONY: image
-image:
-	docker build \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg COMMIT=$(COMMIT) \
-		--build-arg DATE=$(DATE) \
+image: build-linux
+	docker buildx build \
+		--platform $(PLATFORM) \
+		--load \
+		-t $(IMAGE):$(TAG) .
+
+.PHONY: image-push
+image-push: build-linux
+	docker buildx build \
+		--platform $(PLATFORM) \
+		--push \
 		-t $(IMAGE):$(TAG) .
 
 .PHONY: helm-lint
