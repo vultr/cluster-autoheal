@@ -20,6 +20,7 @@ type RepairRule struct {
 	Reason        string   `json:"reason,omitempty"`
 	MinRepairWait Duration `json:"minRepairWait"`
 	Action        string   `json:"action"`
+	Alert         bool     `json:"alert,omitempty"`
 }
 
 type Duration struct {

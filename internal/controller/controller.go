@@ -28,6 +28,7 @@ type Controller struct {
 	provider           cloudprovider.Interface
 	cfg                config.Config
 	conditionFirstSeen map[string]time.Time
+	alerted            map[string]time.Time
 	repaired           map[string]time.Time
 }
 
@@ -46,6 +47,7 @@ func New(client kubernetes.Interface, provider cloudprovider.Interface, cfg conf
 		provider:           provider,
 		cfg:                cfg,
 		conditionFirstSeen: map[string]time.Time{},
+		alerted:            map[string]time.Time{},
 		repaired:           map[string]time.Time{},
 	}
 }
@@ -140,6 +142,7 @@ func (c *Controller) scan(ctx context.Context) error {
 	for key := range c.conditionFirstSeen {
 		if _, ok := seenConditions[key]; !ok {
 			delete(c.conditionFirstSeen, key)
+			delete(c.alerted, key)
 			delete(c.repaired, key)
 		}
 	}
@@ -165,23 +168,56 @@ func (c *Controller) scan(ctx context.Context) error {
 		}
 
 		if c.cfg.DryRun {
-			klog.Infof("dry-run: would repair node %s condition=%s reason=%s action=%s", candidate.node.Name, candidate.condition.Type, candidate.condition.Reason, candidate.action)
+			if candidate.rule.Alert {
+				klog.Infof("dry-run: would alert for node %s condition=%s reason=%s action=%s", candidate.node.Name, candidate.condition.Type, candidate.condition.Reason, candidate.action)
+			}
+			if candidate.action != "" {
+				klog.Infof("dry-run: would repair node %s condition=%s reason=%s action=%s", candidate.node.Name, candidate.condition.Type, candidate.condition.Reason, candidate.action)
+			}
+			if candidate.rule.Alert {
+				c.alerted[candidate.key] = now
+			}
 			c.repaired[candidate.key] = now
 			continue
 		}
 
-		if err := c.prepareNodeForRepair(ctx, candidate.node, candidate.action, now); err != nil {
-			return fmt.Errorf("prepare node %s for repair: %w", candidate.node.Name, err)
+		if candidate.rule.Alert {
+			c.alertNode(ctx, candidate, now)
 		}
 
-		klog.Infof("repairing node %s condition=%s reason=%s action=%s", candidate.node.Name, candidate.condition.Type, candidate.condition.Reason, candidate.action)
-		if err := c.provider.RepairNode(ctx, candidate.node, candidate.action); err != nil {
-			return fmt.Errorf("repair node %s: %w", candidate.node.Name, err)
+		if candidate.action != "" {
+			if err := c.prepareNodeForRepair(ctx, candidate.node, candidate.action, now); err != nil {
+				return fmt.Errorf("prepare node %s for repair: %w", candidate.node.Name, err)
+			}
+
+			klog.Infof("repairing node %s condition=%s reason=%s action=%s", candidate.node.Name, candidate.condition.Type, candidate.condition.Reason, candidate.action)
+			if err := c.provider.RepairNode(ctx, candidate.node, candidate.action); err != nil {
+				return fmt.Errorf("repair node %s: %w", candidate.node.Name, err)
+			}
 		}
 		c.repaired[candidate.key] = now
 	}
 
 	return nil
+}
+
+func (c *Controller) alertNode(ctx context.Context, candidate repairCandidate, now time.Time) {
+	if alertedAt, ok := c.alerted[candidate.key]; ok && !alertedAt.Before(candidate.firstSeen) {
+		return
+	}
+
+	alert := cloudprovider.NodeAlert{
+		Condition: candidate.condition,
+		Action:    candidate.action,
+		FirstSeen: candidate.firstSeen,
+	}
+	if err := c.provider.AlertNode(ctx, candidate.node, alert); err != nil {
+		klog.Errorf("alert node %s condition=%s reason=%s action=%s failed: %v", candidate.node.Name, candidate.condition.Type, candidate.condition.Reason, candidate.action, err)
+		return
+	}
+
+	c.alerted[candidate.key] = now
+	klog.Infof("alerted for node %s condition=%s reason=%s action=%s", candidate.node.Name, candidate.condition.Type, candidate.condition.Reason, candidate.action)
 }
 
 func (c *Controller) repairCandidate(node *corev1.Node, now time.Time, seen map[string]struct{}) (repairCandidate, bool, error) {
@@ -215,7 +251,7 @@ func (c *Controller) repairCandidate(node *corev1.Node, now time.Time, seen map[
 		if err != nil {
 			return repairCandidate{}, false, err
 		}
-		if action == "" {
+		if action == "" && !rule.Alert {
 			c.repaired[key] = now
 			klog.Infof("node %s condition=%s reason=%s matched no-action repair", node.Name, condition.Type, condition.Reason)
 			continue

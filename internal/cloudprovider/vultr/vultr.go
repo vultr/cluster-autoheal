@@ -3,6 +3,7 @@ package vultr
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -16,7 +17,14 @@ const (
 	providerName       = "vultr"
 	nodeIDLabel        = "vke.vultr.com/node-id"
 	bareMetalNodeLabel = "vultr.com/baremetal"
+	ticketsPath        = "/v2/tickets"
 )
+
+type createTicketRequest struct {
+	Subject     string `json:"subject"`
+	Description string `json:"description"`
+	SubUUID     string `json:"sub-uuid"`
+}
 
 type resourceType string
 
@@ -75,6 +83,42 @@ func (p *Provider) RepairNode(ctx context.Context, node *corev1.Node, action clo
 	default:
 		return fmt.Errorf("unsupported repair action %q", action)
 	}
+}
+
+func (p *Provider) AlertNode(ctx context.Context, node *corev1.Node, alert cloudprovider.NodeAlert) error {
+	resource, err := resourceForNode(node)
+	if err != nil {
+		return err
+	}
+
+	subject := fmt.Sprintf("cluster-autoheal: node %s requires attention", node.Name)
+	description := fmt.Sprintf("cluster-autoheal detected an unhealthy node.\n\nNode: %s\nVultr resource: %s %s\nCondition: %s\nStatus: %s\nReason: %s\nMessage: %s\nFirst seen: %s\nRepair action: %s",
+		node.Name,
+		resource.typeName,
+		resource.id,
+		alert.Condition.Type,
+		alert.Condition.Status,
+		alert.Condition.Reason,
+		alert.Condition.Message,
+		alert.FirstSeen.UTC().Format("2006-01-02T15:04:05Z"),
+		alert.Action,
+	)
+
+	return p.createTicket(ctx, subject, description, resource.id)
+}
+
+func (p *Provider) createTicket(ctx context.Context, subject, description, subUUID string) error {
+	req, err := p.client.NewRequest(ctx, http.MethodPost, ticketsPath, createTicketRequest{
+		Subject:     subject,
+		Description: description,
+		SubUUID:     subUUID,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = p.client.DoWithContext(ctx, req, nil)
+	return err
 }
 
 func resourceForNode(node *corev1.Node) (nodeResource, error) {

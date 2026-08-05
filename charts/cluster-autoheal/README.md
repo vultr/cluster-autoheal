@@ -15,7 +15,9 @@ kubectl create secret generic cluster-autoheal-vultr \
 ```
 
 ```sh
-helm install cluster-autoheal ./charts/cluster-autoheal \
+helm repo add cluster-autoheal https://vultr.github.io/cluster-autoheal
+helm repo update
+helm install cluster-autoheal cluster-autoheal/cluster-autoheal \
   --namespace kube-system \
   --set vultr.existingSecret=cluster-autoheal-vultr
 ```
@@ -23,11 +25,13 @@ helm install cluster-autoheal ./charts/cluster-autoheal \
 Install a specific image tag:
 
 ```sh
-helm upgrade --install cluster-autoheal ./charts/cluster-autoheal \
+helm upgrade --install cluster-autoheal cluster-autoheal/cluster-autoheal \
   --namespace kube-system \
   --set vultr.existingSecret=cluster-autoheal-vultr \
   --set image.tag=v0.1.0
 ```
+
+For local chart development, use `./charts/cluster-autoheal` instead of `cluster-autoheal/cluster-autoheal`.
 
 ## Important Values
 
@@ -44,7 +48,7 @@ helm upgrade --install cluster-autoheal ./charts/cluster-autoheal \
 - `controller.uncordonAfterReboot`: uncordon controller-cordoned rebooted nodes after they return Ready. Defaults to `true`.
 - `controller.deleteEmptyDirData`: allow draining pods that use `emptyDir` volumes. Defaults to `false`.
 - `controller.dryRun`: logs repairs without changing cloud resources.
-- `repairPolicy.rules`: condition/reason-specific repair rules with `minRepairWait` and `action`.
+- `repairPolicy.rules`: condition/reason-specific repair rules with `minRepairWait`, `action`, and optional `alert`.
 - `repairPolicy.maxUnhealthyNodeThresholdCount`: stop repairs above this candidate count.
 - `repairPolicy.maxUnhealthyNodeThresholdPercentage`: stop repairs above this candidate percentage.
 - `repairPolicy.maxParallelNodesRepairedCount`: maximum nodes repaired per scan.
