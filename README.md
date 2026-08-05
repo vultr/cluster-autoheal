@@ -12,9 +12,9 @@ This is an initial controller foundation with:
 - A cloud provider registry in `internal/cloudprovider`.
 - A polling node-health controller in `internal/controller`.
 - A Vultr provider in `internal/cloudprovider/vultr`.
-- `reboot` and `replace` repair actions.
+- `reboot` and `replace` repair actions with optional provider-backed alerts.
 
-For Vultr, `reboot` reboots the resource backing the node. `replace` deletes the resource; replacement is expected to be handled by the cluster's node provisioning layer. The provider supports both Vultr cloud compute instances and bare metal servers.
+For Vultr, `reboot` reboots the resource backing the node. `replace` deletes the resource; replacement is expected to be handled by the cluster's node provisioning layer. The provider supports both Vultr cloud compute instances and bare metal servers. Alerts create Vultr support tickets.
 
 ## Running Locally
 
@@ -42,7 +42,9 @@ kubectl create secret generic cluster-autoheal-vultr \
 Install the chart:
 
 ```sh
-helm install cluster-autoheal ./charts/cluster-autoheal \
+helm repo add cluster-autoheal https://vultr.github.io/cluster-autoheal
+helm repo update
+helm install cluster-autoheal cluster-autoheal/cluster-autoheal \
   --namespace kube-system \
   --set vultr.existingSecret=cluster-autoheal-vultr
 ```
@@ -52,11 +54,13 @@ The chart defaults to `vultr/cluster-autoheal` and uses the chart `appVersion` a
 For a safe first run, enable dry-run mode:
 
 ```sh
-helm upgrade --install cluster-autoheal ./charts/cluster-autoheal \
+helm upgrade --install cluster-autoheal cluster-autoheal/cluster-autoheal \
   --namespace kube-system \
   --set vultr.existingSecret=cluster-autoheal-vultr \
   --set controller.dryRun=true
 ```
+
+For local chart development, use `./charts/cluster-autoheal` instead of `cluster-autoheal/cluster-autoheal`.
 
 ## Flags
 
@@ -111,6 +115,7 @@ rules:
   - condition: Ready
     minRepairWait: 30m
     action: replace
+    alert: true
 ```
 
 Rule fields:
@@ -119,10 +124,11 @@ Rule fields:
 - `reason`: optional condition reason. Exact reason matches take precedence over condition-only rules.
 - `minRepairWait`: how long the unhealthy condition/reason must persist before repair.
 - `action`: `replace`, `reboot`, or `none`.
+- `alert`: optional boolean. When `true`, the cloud provider sends an alert in addition to the configured action. With the Vultr provider, this creates a support ticket.
 
 Node label override:
 
-Set `cluster-autoheal.vultr.com/repair-action` on a node to override the action from the matched policy rule. Valid values are `replace`, `reboot`, and `none`.
+Set `cluster-autoheal.vultr.com/repair-action` on a node to override the action from the matched policy rule. Valid values are `replace`, `reboot`, and `none`. The override does not change whether the matched rule alerts.
 
 ```sh
 kubectl label node <node-name> cluster-autoheal.vultr.com/repair-action=reboot
@@ -141,6 +147,7 @@ When a matched condition remains unhealthy beyond its rule's `minRepairWait`, th
 
 - Cordon: enabled by default with `--cordon-before-repair=true`.
 - Drain: optional with `--drain-before-repair=true`.
+- Alert: optional per rule with `alert: true`.
 - Repair: calls the provider with `reboot` or `replace`.
 
 Drain uses Kubernetes pod evictions. It skips mirror pods, DaemonSet-managed pods, completed pods, and pods already being deleted. Pods using `emptyDir` block drain unless `--delete-emptydir-data=true` is set.
@@ -169,7 +176,7 @@ make helm-template
 make image TAG=dev
 ```
 
-GitHub Actions run Go formatting, vet, tests, binary build, Helm lint/template, and Docker image builds. Releases publish images to `vultr/cluster-autoheal` through GoReleaser.
+GitHub Actions run Go formatting, vet, tests, binary build, Helm lint/template, and Docker image builds. Releases publish images to `vultr/cluster-autoheal` through GoReleaser. Helm release commits matching `Release helm-X.Y.Z #major|#minor|#patch` publish chart packages to the GitHub Pages Helm repo at `https://vultr.github.io/cluster-autoheal`.
 
 ## Provider Contract
 
@@ -179,6 +186,7 @@ Providers implement:
 type Interface interface {
     Name() string
     RepairNode(ctx context.Context, node *corev1.Node, action NodeRepairAction) error
+    AlertNode(ctx context.Context, node *corev1.Node, alert NodeAlert) error
 }
 ```
 
@@ -192,3 +200,7 @@ The Vultr provider detects the backing resource from VKE node labels when availa
 - `vultr.com/baremetal`: `true` means use the bare metal API; any other value uses the instance API.
 
 If `vke.vultr.com/node-id` is missing, the provider falls back to Kubernetes `spec.providerID` values prefixed with `vultr://` or `vultr/`.
+
+## Vultr Alerts
+
+Vultr alerts use the same Vultr resource ID that the provider resolves for repair actions. The ticket subject includes the Kubernetes node name and the ticket `sub-uuid` is set to the backing Vultr instance or bare metal server ID.

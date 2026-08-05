@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -18,6 +19,13 @@ const (
 type Interface interface {
 	Name() string
 	RepairNode(ctx context.Context, node *corev1.Node, action NodeRepairAction) error
+	AlertNode(ctx context.Context, node *corev1.Node, alert NodeAlert) error
+}
+
+type NodeAlert struct {
+	Condition corev1.NodeCondition
+	Action    NodeRepairAction
+	FirstSeen time.Time
 }
 
 type Builder func() (Interface, error)

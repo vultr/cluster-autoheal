@@ -14,6 +14,7 @@ import (
 
 type recordingProvider struct {
 	actions []cloudprovider.NodeRepairAction
+	alerts  []cloudprovider.NodeAlert
 }
 
 func (recordingProvider) Name() string {
@@ -22,6 +23,11 @@ func (recordingProvider) Name() string {
 
 func (p *recordingProvider) RepairNode(_ context.Context, _ *corev1.Node, action cloudprovider.NodeRepairAction) error {
 	p.actions = append(p.actions, action)
+	return nil
+}
+
+func (p *recordingProvider) AlertNode(_ context.Context, _ *corev1.Node, alert cloudprovider.NodeAlert) error {
+	p.alerts = append(p.alerts, alert)
 	return nil
 }
 
@@ -130,6 +136,53 @@ func TestScanHonorsNodeLabelActionOverride(t *testing.T) {
 	}
 	if provider.actions[0] != cloudprovider.NodeRepairReboot {
 		t.Fatalf("repair action = %s, want %s", provider.actions[0], cloudprovider.NodeRepairReboot)
+	}
+}
+
+func TestScanAlertsAndRepairsWhenRuleRequestsAlert(t *testing.T) {
+	node := unhealthyNode("worker-1", corev1.NodeReady, "KubeletNotReady")
+	provider := &recordingProvider{}
+	cfg := testConfig()
+	cfg.RepairRules = []config.RepairRule{
+		{Condition: "Ready", MinRepairWait: config.Duration{Duration: time.Minute}, Action: config.ActionReplace, Alert: true},
+	}
+	client := fake.NewSimpleClientset(node)
+	c := New(client, provider, cfg)
+	c.conditionFirstSeen[repairKey(node.Name, corev1.NodeReady, "KubeletNotReady")] = time.Now().Add(-2 * time.Minute)
+
+	if err := c.scan(context.Background()); err != nil {
+		t.Fatalf("scan() error = %v", err)
+	}
+	if len(provider.alerts) != 1 {
+		t.Fatalf("alerts = %d, want 1", len(provider.alerts))
+	}
+	if len(provider.actions) != 1 {
+		t.Fatalf("repair actions = %d, want 1", len(provider.actions))
+	}
+	if provider.actions[0] != cloudprovider.NodeRepairReplace {
+		t.Fatalf("repair action = %s, want %s", provider.actions[0], cloudprovider.NodeRepairReplace)
+	}
+}
+
+func TestScanCanAlertWithoutRepairWhenActionIsNone(t *testing.T) {
+	node := unhealthyNode("worker-1", corev1.NodeReady, "KubeletNotReady")
+	provider := &recordingProvider{}
+	cfg := testConfig()
+	cfg.RepairRules = []config.RepairRule{
+		{Condition: "Ready", MinRepairWait: config.Duration{Duration: time.Minute}, Action: config.ActionNoAction, Alert: true},
+	}
+	client := fake.NewSimpleClientset(node)
+	c := New(client, provider, cfg)
+	c.conditionFirstSeen[repairKey(node.Name, corev1.NodeReady, "KubeletNotReady")] = time.Now().Add(-2 * time.Minute)
+
+	if err := c.scan(context.Background()); err != nil {
+		t.Fatalf("scan() error = %v", err)
+	}
+	if len(provider.alerts) != 1 {
+		t.Fatalf("alerts = %d, want 1", len(provider.alerts))
+	}
+	if len(provider.actions) != 0 {
+		t.Fatalf("repair actions = %d, want 0", len(provider.actions))
 	}
 }
 

@@ -11,3 +11,5 @@ If using the Vultr provider, set VULTR_API_KEY with either:
 or create a secret and install with:
 
   --set vultr.existingSecret=<secret-name>
+
+Vultr ticket alerts use the backing node resource ID as the ticket sub-uuid.
