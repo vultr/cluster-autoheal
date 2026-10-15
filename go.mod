@@ -3,7 +3,7 @@ module github.com/vultr/cluster-autoheal
 go 1.26.0
 
 require (
-	github.com/vultr/govultr/v3 v3.31.2
+	github.com/vultr/govultr/v3 v3.32.0
 	golang.org/x/oauth2 v0.36.0
 	k8s.io/api v0.36.1
 	k8s.io/apimachinery v0.36.1
