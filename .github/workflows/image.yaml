@@ -13,7 +13,7 @@ env:
 
 jobs:
   check-commit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       msg_check: ${{ steps.check-msg.outputs.match }}
       tag: ${{ steps.check-msg.outputs.tag }}
@@ -28,7 +28,7 @@ jobs:
           fi
 
   create-tag:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: needs.check-commit.outputs.msg_check == 'true'
     needs: check-commit
     permissions:
@@ -57,7 +57,7 @@ jobs:
           git push origin "$tag"
 
   goreleaser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: create-tag
     permissions:
       contents: write
